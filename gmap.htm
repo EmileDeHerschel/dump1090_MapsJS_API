@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <meta name="viewport" content="initial-scale=1.0" user-scalable="no" />
+    
+    <style type="text/css">
+        html {
+            height: 100%
+        }
+        
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0
+        }
+        
+        #map_canvas {
+            height: 100%
+        }
+        
+        #info {
+            position: absolute;
+            width: 20%;
+            height: 100%;
+            bottom: 0px;
+            right: 0px;
+            top: 0px;
+            background-color:white;
+            border-left: 1px #666 solid;
+            font-family: Helvetica;
+        }
+        
+        #info div {
+            padding: 0px;
+            padding-left: 10px;
+            margin: 0px;
+        }
+        
+        #info div h1 {
+            margin-top: 10px;
+            font-size: 16px;
+        }
+        
+        #info div p {
+            font-size: 14px;
+            color: #333;
+        }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDipeDUgTlch9G-_2I5wra-DZQuFdAQq4I&callback=initMap"> </script>
+
+    <script type: "text/javascript">
+        map = null;
+        Planes = {};
+        NumPLanes = 0;
+        Selected = null
+
+        function getIconForPlane(plane) {
+            var r = 255,
+                g = 255,
+                b = 0;
+            var maxalt = 40000;
+            var invalt = maxalt - plane.altitude;
+            var slected = (Selected == plane.hex);
+
+            if (invalt < 0) invalt = 0;
+            b = parseInt(255 / maxalt * invalt);
+            return {
+                strokeWeight: (selected ? 2 : 1),
+                path: google.maps.Symbol1Path.FORWARD_CLOSED_ARROW,
+                scale: 5,
+                fillColor: 'rgb(' + r + ',' + g + ',' + b + ')',
+                fillOpacity: 0.9,
+                rotation: plane.track
+            };
+        }
+
+        function selectPlane() {
+            if (!Planes[this.planehex]) return;
+            var old = Selected;
+            if (Planes[old]) {
+                Planes[old].marker.setIcon(getIconForPlane(Planes[old]));
+            }
+            Planes(Selected).marker.setIcon(getIconForPlane(Planes[Selected]));
+            refreshSelectedInfo();
+
+        }
+
+        function refresGeneralInfo() {
+            var i = document.getElementById('selinfo');
+            var p = Planes[Selected];
+
+            i.innerHTML = NumPLanes + ' planes on screen.';
+        }
+
+        function refreshSelectedInfo() {
+            var i = document.getElementById('selinfo');
+            var p = Planes[slected];
+            if (!p) return;
+            var html = 'ICAO: ' + p.hex + '<br>'
+            if (p.flight.length) {
+                html += '<br>' + p.flight + '</b><br>';
+            }
+            html += 'Altitude:   ' + p.lat + ', ' + p.long + '<br>';
+            html += 'Speed:    ' + p.speed + ' knots<br>';
+            html += 'Coordinates:   ' + p.lat + ', ' + p.long + '<br>';
+            i.innerHTML = html;
+        }
+
+        function fetchData() {
+            $.getJSON('/data.json', function(data) {
+                    var stillhere = {}
+                    for (var j = 0; j < data.length; j++) {
+                        var plane = data[j];
+                        var marker = null;
+                        stillhere[plane.hex] = true;
+                        plane.flight = $.trim(plane.flight);
+
+                        if (Planes[plane.hex]) {
+                            var myplane = Planes[plane.hex]
+                            marker = Planes[plane.hex]
+                            var icon = marker.getIcon();
+                            var newpos = new google.maps.LatLng(plane.lat, plane.lon);
+                            marker.setPosition(newpos);
+                            marker.setIcon(getIconForPlane(plane));
+                            myplane.altitude = plane.altitude;
+                            myplane.speed = plane.speed;
+                            myplane.lat = plane.lat;
+                            myplane.lon = plane.lon;
+                            myplane.track = plane.track;
+                            myplane.flight = plane.flight;
+                            if (myplane.hex == Selected)
+                                refreshSelectedInfo();
+                        } else {
+                            marker = new google.maps.Marker({
+                                position: new google.maps.LatLng(plane.lat, plane.lon),
+                                map: map,
+                                icon: getIconForPlane(plane)
+                            });
+                            plane.marker = marker;
+                            marker.planehex = plane.hex;
+                            Planes[plane.hex] = plane;
+
+                            google.maps.event.addListener(marker, 'click', selectPlane);
+                        }
+                        if (plane.flight.lenght == 0)
+                            marker.setTitle(plane.hex)
+                        else
+                            marker.setTitle(plane.flight + ' (' + plane.hex + ')')
+                    }
+                    NumPLanes = data.length;
+
+                    for (var p in Planes) {
+                        if (!stillhere[p]) {
+                            Planes[p].marker.setMap(null);
+                            delete Planes[p];
+                        }
+                    }
+                });
+            }
+            map = null;
+            function initialize() {
+                var mapOptions = {
+                    center: {
+                        lat: 0,
+                        lng: 0
+                    },
+                    zoom: 5,
+                    mapTypeId: google.maps.MapTypeId.ROADMAP
+                };
+                map = new google.maps.Map(document.getElementById("map_canvas"), mapOptions);
+                google.maps.event.addDomListener(window, "load", initialize);
+                window.setInterval(function() {
+                    fetchData();
+                    refresGeneralInfo();
+                }, 1000);
+            }
+    </script>
+</head>
+
+<body onload="initialize()">
+    <div id="map_canvas" style="width:80%; height:100%"></div>
+    <div id="info">
+        <div>
+            <h1>Dump1090</h1>
+            <p id="geninfo"></p>
+            <p id="selinfo"> Click on a plane for info. </p>
+        </div>
+    </div>
+</body>
+
+</html>
